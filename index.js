@@ -1,4 +1,3 @@
-
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -153,6 +152,36 @@ app.get("/favorites/:email", verifyToken, async (req, res) => {
 app.delete("/favorites/:id", verifyToken, async (req, res) => {
   const result = await req.favoritesCollection.deleteOne({ _id: new ObjectId(req.params.id) });
   res.send(result);
+});
+
+// ─── Bookings ────────────────────────────────────────────
+app.post("/bookings", verifyToken, async (req, res) => {
+  const booking = req.body;
+  const newBooking = { ...booking, bookingStatus: "pending", paymentStatus: "unpaid", createdAt: new Date() };
+  const result = await req.bookingsCollection.insertOne(newBooking);
+  res.send(result);
+});
+
+app.get("/bookings", verifyToken, async (req, res) => {
+  const { email } = req.query;
+  const query = email ? { tenantEmail: email } : {};
+  const bookings = await req.bookingsCollection.find(query).sort({ createdAt: -1 }).toArray();
+  res.send(bookings);
+});
+
+app.get("/bookings/all", verifyToken, async (req, res) => {
+  const bookings = await req.bookingsCollection.find().sort({ createdAt: -1 }).toArray();
+  res.send(bookings);
+});
+
+app.get("/bookings/:id", verifyToken, async (req, res) => {
+  try {
+    const booking = await req.bookingsCollection.findOne({ _id: new ObjectId(req.params.id) });
+    if (!booking) return res.status(404).send({ message: "Booking not found" });
+    res.send(booking);
+  } catch (err) {
+    res.status(400).send({ message: "Invalid booking id" });
+  }
 });
 
 // ─── Root ────────────────────────────────────────────────
