@@ -184,6 +184,45 @@ app.get("/bookings/:id", verifyToken, async (req, res) => {
   }
 });
 
+app.patch("/bookings/:id/confirm-payment", verifyToken, async (req, res) => {
+  const { transactionId } = req.body;
+  try {
+    const updateDoc = { paymentStatus: "paid", bookingStatus: "pending" };
+    if (transactionId) updateDoc.transactionId = transactionId;
+    const result = await req.bookingsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: updateDoc }
+    );
+    res.send(result);
+  } catch (err) {
+    res.status(400).send({ message: "Invalid booking id" });
+  }
+});
+
+app.patch("/bookings/:id/status", verifyToken, async (req, res) => {
+  const { status } = req.body;
+  try {
+    const result = await req.bookingsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { bookingStatus: status } }
+    );
+    res.send(result);
+  } catch (err) {
+    res.status(400).send({ message: "Invalid booking id" });
+  }
+});
+
+app.get("/booking-requests/:email", verifyToken, async (req, res) => {
+  const ownerEmail = req.params.email;
+  const ownerProperties = await req.propertiesCollection.find({ ownerEmail }).toArray();
+  const propertyIds = ownerProperties.map((p) => p._id.toString());
+  const bookings = await req.bookingsCollection
+    .find({ propertyId: { $in: propertyIds } })
+    .sort({ createdAt: -1 })
+    .toArray();
+  res.send(bookings);
+});
+
 // ─── Root ────────────────────────────────────────────────
 app.get("/", (req, res) => {
   res.send("Property Rental & Booking Platform server is running");
