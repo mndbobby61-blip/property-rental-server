@@ -1,9 +1,9 @@
-// COMMIT 2 — "feat: add public property listing and details routes"
 
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const verifyToken = require("./verifyToken");
 
 const app = express();
 app.use(cors());
@@ -59,6 +59,20 @@ app.get("/properties", async (req, res) => {
   const total = await propertiesCollection.countDocuments(query);
   const properties = await propertiesCollection.find(query).sort(sortOption).skip(skip).limit(limitNum).toArray();
   res.send({ properties, total, totalPages: Math.max(1, Math.ceil(total / limitNum)), currentPage: pageNum });
+});
+
+// ⚠️ Protected — owner/admin only
+app.get("/properties/all", verifyToken, async (req, res) => {
+  const properties = await req.propertiesCollection.find().sort({ createdAt: -1 }).toArray();
+  res.send(properties);
+});
+
+app.get("/properties/owner/:email", verifyToken, async (req, res) => {
+  const properties = await req.propertiesCollection
+    .find({ ownerEmail: req.params.email })
+    .sort({ createdAt: -1 })
+    .toArray();
+  res.send(properties);
 });
 
 app.get("/properties/:id", async (req, res) => {
