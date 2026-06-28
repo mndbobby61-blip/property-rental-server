@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const verifyToken = require("./verifyToken");
 
 const app = express();
@@ -221,6 +222,87 @@ app.get("/booking-requests/:email", verifyToken, async (req, res) => {
     .sort({ createdAt: -1 })
     .toArray();
   res.send(bookings);
+});
+
+
+// ─── Stripe Checkout (hosted page) ───────────────────────
+app.post("/create-checkout-session", verifyToken, async (req, res) => {
+  const { bookingId, amount, propertyTitle } = req.body;
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: { name: propertyTitle || "Property Booking" },
+            unit_amount: Math.round(Number(amount) * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      mode: "payment",
+      success_url: `${process.env.CLIENT_URL}/payment-success?bookingId=${bookingId}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.CLIENT_URL}/payment/${bookingId}`,
+    });
+    res.send({ url: session.url });
+  } catch (err) {
+    console.error("Stripe error:", err);
+    res.status(500).send({ message: "Could not create checkout session" });
+  }
+});
+
+app.get("/verify-payment/:sessionId", verifyToken, async (req, res) => {
+  try {
+    const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
+    res.send({ paid: session.payment_status === "paid" });
+  } catch (err) {
+    res.status(400).send({ message: "Invalid session" });
+  }
+});
+
+
+// ─── Transactions (Admin) ────────────────────────────────
+app.get("/transactions", verifyToken, async (req, res) => {
+  const paidBookings = await req.bookingsCollection.find({ paymentStatus: "paid" }).sort({ createdAt: -1 }).toArray();
+  const result = await Promise.all(
+    paidBookings.map(async (b) => {
+      let ownerName = "—";
+      if (b.propertyId) {
+        try {
+          const property = await req.propertiesCollection.findOne({ _id: new ObjectId(b.propertyId) });
+          ownerName = property?.ownerName || property?.ownerEmail || "—";
+        } catch (e) {
+          ownerName = "—";
+        }
+      }
+      return {
+        transactionId: b.transactionId || b._id,
+        propertyName: b.propertyTitle,
+        tenantName: b.tenantName,
+        ownerName,
+        amount: b.amount,
+        date: b.createdAt,
+      };
+    })
+  );
+  res.send(result);
+});
+
+// ─── Users (Admin) ───────────────────────────────────────
+app.get("/users/all", verifyToken, async (req, res) => {
+  const users = await req.usersCollection.find().toArray();
+  res.send(users);
+});
+
+app.patch("/users/:id/role", verifyToken, async (req, res) => {
+  const { role } = req.body;
+  try {
+    const result = await req.usersCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { role } });
+    res.send(result);
+  } catch (err) {
+    res.status(400).send({ message: "Invalid user id" });
+  }
 });
 
 // ─── Root ────────────────────────────────────────────────
