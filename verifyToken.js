@@ -1,11 +1,12 @@
-const { jwtVerify, createRemoteJWKSet } = require("jose");
+let josePromise;
+function getJose() {
+  if (!josePromise) {
+    josePromise = import("jose");
+  }
+  return josePromise;
+}
 
-/**
- * .env-এ AUTH_APP_URL বসাও — যেখানে Next.js app চলছে:
- *   dev:  AUTH_APP_URL=http://localhost:3000
- *   prod: AUTH_APP_URL=https://তোমার-deployed-client-url.vercel.app
- */
-const JWKS = createRemoteJWKSet(new URL(`${process.env.AUTH_APP_URL}/api/auth/jwks`));
+let JWKS;
 
 const verifyToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -17,6 +18,12 @@ const verifyToken = async (req, res, next) => {
   const token = authHeader.split(" ")[1];
 
   try {
+    const { jwtVerify, createRemoteJWKSet } = await getJose();
+
+    if (!JWKS) {
+      JWKS = createRemoteJWKSet(new URL(`${process.env.AUTH_APP_URL}/api/auth/jwks`));
+    }
+
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: process.env.AUTH_APP_URL,
       audience: process.env.AUTH_APP_URL,
