@@ -305,6 +305,54 @@ app.patch("/users/:id/role", verifyToken, async (req, res) => {
   }
 });
 
+
+// ─── Reviews ─────────────────────────────────────────────
+app.get("/reviews", async (req, res) => {
+  const { limit = 4 } = req.query;
+  const reviews = await req.reviewsCollection.find().sort({ rating: -1, date: -1 }).limit(Number(limit)).toArray();
+  res.send(reviews);
+});
+
+app.get("/reviews/:propertyId", async (req, res) => {
+  const reviews = await req.reviewsCollection.find({ propertyId: req.params.propertyId }).sort({ date: -1 }).toArray();
+  res.send(reviews);
+});
+
+app.post("/reviews", verifyToken, async (req, res) => {
+  const review = req.body;
+  const newReview = { ...review, date: new Date() };
+  const result = await req.reviewsCollection.insertOne(newReview);
+  res.send(result);
+});
+
+// ─── Owner Stats ─────────────────────────────────────────
+app.get("/owner-stats/:email", verifyToken, async (req, res) => {
+  const email = req.params.email;
+  const properties = await req.propertiesCollection.find({ ownerEmail: email }).toArray();
+  const propertyIds = properties.map((p) => p._id.toString());
+  const allBookings = await req.bookingsCollection.find({ propertyId: { $in: propertyIds } }).toArray();
+  const paidBookings = allBookings.filter((b) => b.paymentStatus === "paid");
+  const totalEarnings = paidBookings.reduce((sum, b) => sum + Number(b.amount || 0), 0);
+  const totalProperties = properties.length;
+  const totalBookings = allBookings.filter((b) => b.bookingStatus === "approved").length;
+
+  const monthlyMap = {};
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    monthlyMap[key] = 0;
+  }
+  paidBookings.forEach((b) => {
+    const d = new Date(b.createdAt);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    if (key in monthlyMap) monthlyMap[key] += Number(b.amount || 0);
+  });
+  const monthlyEarnings = Object.entries(monthlyMap).map(([month, earnings]) => ({ month, earnings }));
+
+  res.send({ totalEarnings, totalProperties, totalBookings, monthlyEarnings });
+});
+
 // ─── Root ────────────────────────────────────────────────
 app.get("/", (req, res) => {
   res.send("Property Rental & Booking Platform server is running");
