@@ -1,4 +1,3 @@
-// COMMIT 4 — "feat: add property create, update, status change and delete routes"
 
 require("dotenv").config();
 const express = require("express");
@@ -128,6 +127,32 @@ app.delete("/properties/:id", verifyToken, async (req, res) => {
   } catch (err) {
     res.status(400).send({ message: "Invalid property id" });
   }
+});
+
+// ─── Favorites ───────────────────────────────────────────
+app.post("/favorites", verifyToken, async (req, res) => {
+  const { email, propertyId } = req.body;
+  const existing = await req.favoritesCollection.findOne({ email, propertyId });
+  if (existing) return res.send({ message: "Already in favorites", insertedId: null });
+  const result = await req.favoritesCollection.insertOne({ email, propertyId, createdAt: new Date() });
+  res.send(result);
+});
+
+app.get("/favorites/:email", verifyToken, async (req, res) => {
+  const email = req.params.email;
+  const favorites = await req.favoritesCollection.find({ email }).toArray();
+  const propertyIds = favorites.map((f) => new ObjectId(f.propertyId));
+  const properties = await req.propertiesCollection.find({ _id: { $in: propertyIds } }).toArray();
+  const result = properties.map((p) => {
+    const fav = favorites.find((f) => f.propertyId === p._id.toString());
+    return { ...p, favoriteId: fav?._id };
+  });
+  res.send(result);
+});
+
+app.delete("/favorites/:id", verifyToken, async (req, res) => {
+  const result = await req.favoritesCollection.deleteOne({ _id: new ObjectId(req.params.id) });
+  res.send(result);
 });
 
 // ─── Root ────────────────────────────────────────────────
