@@ -1,3 +1,4 @@
+// COMMIT 4 — "feat: add property create, update, status change and delete routes"
 
 require("dotenv").config();
 const express = require("express");
@@ -39,7 +40,7 @@ app.use(async (req, res, next) => {
   }
 });
 
-// ─── Properties (public) ─────────────────────────────────
+// ─── Properties ──────────────────────────────────────────
 app.get("/properties", async (req, res) => {
   const { propertiesCollection } = req;
   const { location, type, min, max, sort, page = 1, limit = 6 } = req.query;
@@ -61,7 +62,6 @@ app.get("/properties", async (req, res) => {
   res.send({ properties, total, totalPages: Math.max(1, Math.ceil(total / limitNum)), currentPage: pageNum });
 });
 
-// ⚠️ Protected — owner/admin only
 app.get("/properties/all", verifyToken, async (req, res) => {
   const properties = await req.propertiesCollection.find().sort({ createdAt: -1 }).toArray();
   res.send(properties);
@@ -80,6 +80,51 @@ app.get("/properties/:id", async (req, res) => {
     const property = await req.propertiesCollection.findOne({ _id: new ObjectId(req.params.id) });
     if (!property) return res.status(404).send({ message: "Property not found" });
     res.send(property);
+  } catch (err) {
+    res.status(400).send({ message: "Invalid property id" });
+  }
+});
+
+app.post("/properties", verifyToken, async (req, res) => {
+  const property = req.body;
+  const newProperty = { ...property, status: "pending", createdAt: new Date() };
+  const result = await req.propertiesCollection.insertOne(newProperty);
+  res.send(result);
+});
+
+app.patch("/properties/:id/status", verifyToken, async (req, res) => {
+  const { status, rejectionFeedback } = req.body;
+  const updateDoc = { status };
+  if (rejectionFeedback) updateDoc.rejectionFeedback = rejectionFeedback;
+  try {
+    const result = await req.propertiesCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: updateDoc }
+    );
+    res.send(result);
+  } catch (err) {
+    res.status(400).send({ message: "Invalid property id" });
+  }
+});
+
+app.patch("/properties/:id", verifyToken, async (req, res) => {
+  const updatedData = req.body;
+  delete updatedData._id;
+  try {
+    const result = await req.propertiesCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: updatedData }
+    );
+    res.send(result);
+  } catch (err) {
+    res.status(400).send({ message: "Invalid property id" });
+  }
+});
+
+app.delete("/properties/:id", verifyToken, async (req, res) => {
+  try {
+    const result = await req.propertiesCollection.deleteOne({ _id: new ObjectId(req.params.id) });
+    res.send(result);
   } catch (err) {
     res.status(400).send({ message: "Invalid property id" });
   }
